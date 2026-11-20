@@ -1,4 +1,4 @@
-name: Daily AI Riddle Video
+name: Daily Cartoon Riddle Video
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get repository files
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -26,17 +26,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Install Python packages
+      - name: Install Python Packages
         run: |
           pip install -r requirements.txt
 
-      - name: Generate AI Riddle Video
+      - name: Generate Cartoon Riddle Video
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python main.py
 
-      - name: Save MP4 Video
+      - name: Upload Generated Video
         uses: actions/upload-artifact@v4
         with:
-          name: Daily-Riddle-Video
-          path: output/
+          name: Daily-Cartoon-Riddle
+          path: output/daily-riddle.mp4
           retention-days: 7
