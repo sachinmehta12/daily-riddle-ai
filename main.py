@@ -1,54 +1,73 @@
 import os
-import random
+import json
 import subprocess
+from datetime import date
 from PIL import Image, ImageDraw, ImageFont
 from gtts import gTTS
+from google import genai
 
 WIDTH, HEIGHT = 1080, 1920
 OUTPUT = "output"
 os.makedirs(OUTPUT, exist_ok=True)
 
-RIDDLES = [
-    {
-        "question": "What has keys but cannot open locks?",
-        "answer": "A PIANO!",
-        "explanation": "A piano has musical keys, but none of them can open a door."
-    },
-    {
-        "question": "The more you take, the more you leave behind. What am I?",
-        "answer": "FOOTSTEPS!",
-        "explanation": "Every step you take leaves another footprint behind."
-    },
-    {
-        "question": "What gets wetter the more it dries?",
-        "answer": "A TOWEL!",
-        "explanation": "A towel absorbs water while drying something else."
-    },
-    {
-        "question": "What has a neck but no head?",
-        "answer": "A BOTTLE!",
-        "explanation": "A bottle has a neck, but it has no head."
-    },
-    {
-        "question": "What can travel around the world while staying in one corner?",
-        "answer": "A STAMP!",
-        "explanation": "A postage stamp stays in the corner of an envelope."
-    },
-    {
-        "question": "What has one eye but cannot see?",
-        "answer": "A NEEDLE!",
-        "explanation": "A needle has an eye where the thread passes through."
-    },
-    {
-        "question": "What belongs to you but other people use it more?",
-        "answer": "YOUR NAME!",
-        "explanation": "Other people say your name more often than you do."
-    }
-]
+def generate_riddle():
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY secret is missing!")
+
+    client = genai.Client(api_key=api_key)
+
+    prompt = f"""
+Create ONE original, difficult and clever English brain teaser
+for a USA YouTube Shorts audience.
+
+Today's date: {date.today()}
+
+Requirements:
+- Make it genuinely challenging but logically solvable.
+- Avoid common overused riddles.
+- Use natural American English.
+- Question should be short and intriguing.
+- Answer must be correct.
+- Explanation must clearly prove the answer.
+- Do not repeat a basic textbook riddle.
+
+Return ONLY valid JSON:
+{{
+  "question": "Your original riddle",
+  "answer": "SHORT ANSWER",
+  "explanation": "Clear explanation"
+}}
+"""
+
+    response = client.models.generate_content(
+        model="gemini-3.1-flash-lite",
+        contents=prompt
+    )
+
+    raw = response.text.strip()
+    raw = raw.replace("```json", "").replace("```", "").strip()
+
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+
+    if start == -1 or end == 0:
+        raise ValueError("Gemini did not return valid JSON")
+
+    riddle = json.loads(raw[start:end])
+
+    for key in ["question", "answer", "explanation"]:
+        if not isinstance(riddle.get(key), str) or not riddle[key].strip():
+            raise ValueError(f"Invalid riddle field: {key}")
+
+    print("Today's AI riddle:", riddle)
+    return riddle
+
 
 def get_font(size):
     path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
     return ImageFont.truetype(path, size)
+
 
 def wrap_text(draw, text, font, max_width):
     words = text.split()
@@ -57,6 +76,7 @@ def wrap_text(draw, text, font, max_width):
 
     for word in words:
         test = (current + " " + word).strip()
+
         if draw.textbbox((0, 0), test, font=font)[2] <= max_width:
             current = test
         else:
@@ -69,6 +89,7 @@ def wrap_text(draw, text, font, max_width):
 
     return lines
 
+
 def draw_centered(draw, text, y, font, fill, max_width=900):
     lines = wrap_text(draw, text, font, max_width)
     line_height = font.size + 24
@@ -79,6 +100,7 @@ def draw_centered(draw, text, y, font, fill, max_width=900):
         draw.text((x, y), line, font=font, fill=fill)
         y += line_height
 
+
 def make_background(riddle):
     img = Image.new("RGB", (WIDTH, HEIGHT))
     pixels = img.load()
@@ -86,11 +108,7 @@ def make_background(riddle):
     for y in range(HEIGHT):
         for x in range(WIDTH):
             glow = int(20 * (1 - y / HEIGHT))
-            pixels[x, y] = (
-                8 + glow,
-                12 + glow,
-                35 + glow
-            )
+            pixels[x, y] = (8 + glow, 12 + glow, 35 + glow)
 
     draw = ImageDraw.Draw(img)
 
@@ -100,13 +118,13 @@ def make_background(riddle):
     )
 
     draw_centered(
-        draw, "ONLY 1% GET IT RIGHT",
-        400, get_font(38), "#FFFFFF"
+        draw, "ONLY 1% GET IT RIGHT", 400,
+        get_font(38), "#FFFFFF"
     )
 
     draw_centered(
-        draw, riddle["question"], 680,
-        get_font(66), "#FFFFFF", 920
+        draw, riddle["question"], 650,
+        get_font(58), "#FFFFFF", 920
     )
 
     draw_centered(
@@ -115,11 +133,12 @@ def make_background(riddle):
     )
 
     draw_centered(
-        draw, "ANSWER REVEALED SOON",
-        1510, get_font(36), "#FFD700"
+        draw, "ANSWER REVEALED SOON", 1510,
+        get_font(36), "#FFD700"
     )
 
     img.save(f"{OUTPUT}/background.png")
+
 
 def make_answer(riddle):
     img = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
@@ -134,19 +153,22 @@ def make_answer(riddle):
     )
 
     draw_centered(
-        draw, "THE ANSWER IS",
-        830, get_font(48), "#FFD700"
+        draw, "THE ANSWER IS", 830,
+        get_font(48), "#FFD700"
     )
 
     draw_centered(
-        draw, riddle["answer"],
-        960, get_font(76), "#FFFFFF"
+        draw, riddle["answer"].upper(), 960,
+        get_font(65), "#FFFFFF", 850
     )
 
     img.save(f"{OUTPUT}/answer.png")
 
+
 def main():
-    riddle = random.choice(RIDDLES)
+    print("Generating a new AI riddle...")
+
+    riddle = generate_riddle()
 
     narration = (
         "Here is today's brain teaser. "
@@ -154,15 +176,18 @@ def main():
         + " Think carefully. "
         + "The answer is... "
         + riddle["answer"]
-        + " "
+        + ". "
         + riddle["explanation"]
-        + " Did you get it right? Comment below!"
+        + " Did you solve it? Comment below!"
     )
 
     print("Generating American English voice...")
-    gTTS(text=narration, lang="en", tld="com").save(
-        f"{OUTPUT}/voice.mp3"
-    )
+
+    gTTS(
+        text=narration,
+        lang="en",
+        tld="com"
+    ).save(f"{OUTPUT}/voice.mp3")
 
     make_background(riddle)
     make_answer(riddle)
@@ -205,9 +230,15 @@ def main():
     subprocess.run(command, check=True)
 
     with open(f"{OUTPUT}/title.txt", "w") as f:
-        f.write("Can You Solve This Impossible Riddle? #shorts")
+        f.write(
+            "Can You Solve This Brain Teaser? #shorts\n\n"
+            + riddle["question"]
+            + "\n\nAnswer: "
+            + riddle["answer"]
+        )
 
-    print("SUCCESS: output/riddle.mp4 created!")
+    print("SUCCESS: AI video generated!")
+
 
 if __name__ == "__main__":
     main()
